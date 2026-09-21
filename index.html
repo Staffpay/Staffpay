@@ -124,6 +124,19 @@ $("loginBtn").onclick=async()=>{
   if(error){$("loginMsg").textContent=error.message;return} await init();
 };
 $("logout").onclick=()=>db.auth.signOut();
+  $("resetBtn").onclick=async()=>{
+  const email=$("email").value.trim();
+  if(!email){
+    $("loginMsg").textContent="Pehle email enter karo";
+    return;
+  }
+
+  const {error}=await db.auth.resetPasswordForEmail(email,{
+    redirectTo:"https://staffpay-pearl.vercel.app/"
+  });
+
+  $("loginMsg").textContent=error ? error.message : "Password reset email sent. Gmail check karo.";
+};
 $("addStaff").onclick=async()=>{
   const name=$("staffName").value.trim(); if(!name)return;
   const {data:{user}}=await db.auth.getUser();
