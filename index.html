@@ -144,6 +144,26 @@ $("logout").onclick=()=>db.auth.signOut();
 
   $("loginMsg").textContent=error ? error.message : "Password reset email sent. Gmail check karo.";
 };
+  $("updatePasswordBtn").onclick=async()=>{
+  const password=$("newPassword").value;
+  const confirm=$("confirmPassword").value;
+
+  if(password.length<6){
+    $("resetMsg").textContent="Password at least 6 characters hona chahiye";
+    return;
+  }
+
+  if(password!==confirm){
+    $("resetMsg").textContent="Passwords match nahi kar rahe";
+    return;
+  }
+
+  const {error}=await db.auth.updateUser({password});
+
+  $("resetMsg").textContent=error
+    ? error.message
+    : "Password updated successfully! Ab login karo.";
+};
 $("addStaff").onclick=async()=>{
   const name=$("staffName").value.trim(); if(!name)return;
   const {data:{user}}=await db.auth.getUser();
