@@ -90,9 +90,36 @@ function monthStart(){let d=new Date();return new Date(d.getFullYear(),d.getMont
 function show(id){$(id).classList.remove("hidden")} function hide(id){$(id).classList.add("hidden")}
 
 async function init(){
+  const isRecovery=window.location.hash.includes("type=recovery");
+
+  if(isRecovery){
+    hide("login");
+    hide("app");
+    show("resetPassword");
+    return;
+  }
+
   const {data:{session}}=await db.auth.getSession();
-  if(session){hide("login");show("app");await loadAll()} else {show("login");hide("app")}
+
+  if(session){
+    hide("login");
+    hide("resetPassword");
+    show("app");
+    await loadAll();
+  }else{
+    show("login");
+    hide("resetPassword");
+    hide("app");
+  }
 }
+
+db.auth.onAuthStateChange((event)=>{
+  if(event==="PASSWORD_RECOVERY"){
+    hide("login");
+    hide("app");
+    show("resetPassword");
+  }
+});
 async function loadAll(){
   const {data:s,error:se}=await db.from("staff").select("*").order("name");
   if(se){alert(se.message);return}
