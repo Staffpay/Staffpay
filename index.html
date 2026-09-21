@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StaffPay — Payment Manager</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f5f7fb;color:#18202a}
+.container{max-width:1100px;margin:auto;padding:18px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px;box-shadow:0 2px 10px #00000008}
+h1,h2{margin:0 0 14px}.muted{color:#6b7280}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.stat{padding:16px}.stat b{display:block;font-size:24px;margin-top:6px}
+input,select,button{width:100%;padding:11px;border:1px solid #d1d5db;border-radius:10px;font:inherit}button{background:#111827;color:white;border:0;cursor:pointer}.secondary{background:#eef2f7;color:#111827}.danger{background:#dc2626}.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.nav{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:16px}.nav button{width:auto}.hidden{display:none!important}.tabs{display:flex;gap:8px;margin:14px 0}.tabs button{width:auto}.tablewrap{overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #eee;text-align:left;white-space:nowrap}.right{text-align:right}
+@media(max-width:750px){.grid{grid-template-columns:1fr 1fr}.row{grid-template-columns:1fr}.container{padding:12px}}
+</style>
+</head>
+<body>
+<div class="container">
+  <div id="login" class="card" style="max-width:420px;margin:8vh auto">
+    <h1>StaffPay</h1><p class="muted">Staff payment record manager</p>
+    <input id="email" type="email" placeholder="Email" autocomplete="email"><br><br>
+    <input id="password" type="password" placeholder="Password" autocomplete="current-password"><br><br>
+    <button id="loginBtn">Login</button>
+    <p id="loginMsg" class="muted"></p>
+  </div>
+
+  <div id="app" class="hidden">
+    <div class="nav">
+      <div><h1>StaffPay</h1><div class="muted">Payment Manager</div></div>
+      <button id="logout" class="secondary">Logout</button>
+    </div>
+
+    <div class="grid">
+      <div class="card stat"><span class="muted">Total staff</span><b id="sStaff">0</b></div>
+      <div class="card stat"><span class="muted">Total paid</span><b id="sTotal">₹0</b></div>
+      <div class="card stat"><span class="muted">Today</span><b id="sToday">₹0</b></div>
+      <div class="card stat"><span class="muted">This month</span><b id="sMonth">₹0</b></div>
+    </div>
+
+    <div class="tabs">
+      <button id="tabPay">Add Payment</button>
+      <button id="tabStaff" class="secondary">Staff</button>
+      <button id="tabHistory" class="secondary">History</button>
+    </div>
+
+    <section id="paySection" class="card">
+      <h2>Add Payment</h2>
+      <div class="row">
+        <div><label>Staff</label><select id="payStaff"></select></div>
+        <div><label>Amount</label><input id="amount" type="number" min="0.01" step="0.01" placeholder="e.g. 500"></div>
+        <div><label>Date & time</label><input id="payDate" type="datetime-local"></div>
+        <div><label>Mode</label><select id="mode"><option>Cash</option><option>UPI</option><option>Bank</option></select></div>
+      </div><br>
+      <input id="note" placeholder="Note (optional)"><br><br>
+      <button id="savePay">Save Payment</button><p id="payMsg" class="muted"></p>
+    </section>
+
+    <section id="staffSection" class="card hidden">
+      <h2>Staff</h2>
+      <div class="row"><input id="staffName" placeholder="Staff name"><input id="staffMobile" placeholder="Mobile (optional)"></div><br>
+      <button id="addStaff">Add Staff</button><p id="staffMsg" class="muted"></p><br>
+      <div class="tablewrap"><table><thead><tr><th>Name</th><th>Mobile</th><th>Total paid</th></tr></thead><tbody id="staffRows"></tbody></table></div>
+    </section>
+
+    <section id="historySection" class="card hidden">
+      <h2>Payment History</h2>
+      <div class="row"><input id="search" placeholder="Search staff / note"><input id="month" type="month"></div><br>
+      <div class="tablewrap"><table><thead><tr><th>Date</th><th>Staff</th><th>Amount</th><th>Mode</th><th>Note</th></tr></thead><tbody id="payRows"></tbody></table></div>
+    </section>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = "PASTE_SUPABASE_URL";
+const SUPABASE_PUBLISHABLE_KEY = "PASTE_PUBLISHABLE_KEY";
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+let staff=[], payments=[];
+
+const $=id=>document.getElementById(id);
+const money=n=>"₹"+Number(n||0).toLocaleString("en-IN",{maximumFractionDigits:2});
+function todayStart(){let d=new Date();d.setHours(0,0,0,0);return d}
+function monthStart(){let d=new Date();return new Date(d.getFullYear(),d.getMonth(),1)}
+function show(id){$(id).classList.remove("hidden")} function hide(id){$(id).classList.add("hidden")}
+
+async function init(){
+  const {data:{session}}=await db.auth.getSession();
+  if(session){hide("login");show("app");await loadAll()} else {show("login");hide("app")}
+}
+async function loadAll(){
+  const {data:s,error:se}=await db.from("staff").select("*").order("name");
+  if(se){alert(se.message);return}
+  const {data:p,error:pe}=await db.from("payments").select("*").order("payment_date",{ascending:false});
+  if(pe){alert(pe.message);return}
+  staff=s||[]; payments=p||[]; render();
+}
+function render(){
+  $("sStaff").textContent=staff.length;
+  $("sTotal").textContent=money(payments.reduce((a,p)=>a+Number(p.amount),0));
+  const ts=todayStart().getTime(), ms=monthStart().getTime();
+  $("sToday").textContent=money(payments.filter(p=>new Date(p.payment_date).getTime()>=ts).reduce((a,p)=>a+Number(p.amount),0));
+  $("sMonth").textContent=money(payments.filter(p=>new Date(p.payment_date).getTime()>=ms).reduce((a,p)=>a+Number(p.amount),0));
+  $("payStaff").innerHTML=staff.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join("");
+  const totals={};payments.forEach(p=>totals[p.staff_id]=(totals[p.staff_id]||0)+Number(p.amount));
+  $("staffRows").innerHTML=staff.map(s=>`<tr><td>${esc(s.name)}</td><td>${esc(s.mobile||"")}</td><td>${money(totals[s.id]||0)}</td></tr>`).join("");
+  renderHistory();
+}
+function renderHistory(){
+  const q=$("search").value.toLowerCase(), m=$("month").value;
+  $("payRows").innerHTML=payments.filter(p=>{
+    const s=staff.find(x=>x.id===p.staff_id), name=(s?.name||"").toLowerCase();
+    const okq=!q||name.includes(q)||(p.note||"").toLowerCase().includes(q);
+    const okm=!m||p.payment_date.slice(0,7)===m;
+    return okq&&okm;
+  }).map(p=>{
+    const s=staff.find(x=>x.id===p.staff_id);
+    return `<tr><td>${new Date(p.payment_date).toLocaleString("en-IN")}</td><td>${esc(s?.name||"")}</td><td>${money(p.amount)}</td><td>${esc(p.payment_mode)}</td><td>${esc(p.note||"")}</td></tr>`;
+  }).join("");
+}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
+
+$("loginBtn").onclick=async()=>{
+  $("loginMsg").textContent="Logging in...";
+  const {error}=await db.auth.signInWithPassword({email:$("email").value,password:$("password").value});
+  if(error){$("loginMsg").textContent=error.message;return} await init();
+};
+$("logout").onclick=()=>db.auth.signOut();
+$("addStaff").onclick=async()=>{
+  const name=$("staffName").value.trim(); if(!name)return;
+  const {data:{user}}=await db.auth.getUser();
+  const {error}=await db.from("staff").insert({owner_id:user.id,name,mobile:$("staffMobile").value.trim()});
+  if(error){$("staffMsg").textContent=error.message;return}
+  $("staffName").value="";$("staffMobile").value="";$("staffMsg").textContent="Staff added.";await loadAll();
+};
+$("savePay").onclick=async()=>{
+  const {data:{user}}=await db.auth.getUser();
+  const staff_id=$("payStaff").value, amount=Number($("amount").value);
+  if(!staff_id||!amount){$("payMsg").textContent="Staff and amount required.";return}
+  const dt=$("payDate").value?new Date($("payDate").value).toISOString():new Date().toISOString();
+  const {error}=await db.from("payments").insert({owner_id:user.id,staff_id,amount,payment_date:dt,payment_mode:$("mode").value,note:$("note").value.trim()});
+  if(error){$("payMsg").textContent=error.message;return}
+  $("amount").value="";$("note").value="";$("payMsg").textContent="Payment saved.";await loadAll();
+};
+$("tabPay").onclick=()=>{show("paySection");hide("staffSection");hide("historySection")};
+$("tabStaff").onclick=()=>{hide("paySection");show("staffSection");hide("historySection")};
+$("tabHistory").onclick=()=>{hide("paySection");hide("staffSection");show("historySection");renderHistory()};
+$("search").oninput=renderHistory;$("month").onchange=renderHistory;
+$("payDate").value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16);
+init();
+</script>
+</body>
+</html>
